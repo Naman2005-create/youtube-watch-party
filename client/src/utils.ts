@@ -1,4 +1,4 @@
-// Small utility: generate a random alphanumeric string of `len` characters
+﻿// Small utility: generate a random alphanumeric string of characters
 export function nanoid(len = 8): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
   let result = '';
@@ -27,5 +27,9 @@ export function extractVideoId(input: string): string | null {
   } catch {
     /* not a valid URL */
   }
-  return null;
+  
+  // Fallback regex for weird formats
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+  const match = trimmed.match(regExp);
+  return (match && match[2].length === 11) ? match[2] : null;
 }
