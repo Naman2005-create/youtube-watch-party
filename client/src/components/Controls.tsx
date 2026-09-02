@@ -35,7 +35,7 @@ export default function Controls({ canControl, roomId, onPlay, onPause, onSeek, 
     setSeekTime('');
   };
 
-  const roomLink = `${window.location.origin}/room/${roomId}`;
+  const roomLink = `${window.location.origin}/#/room/${roomId}`;
 
   const copyCode = () => {
     navigator.clipboard.writeText(roomId);
