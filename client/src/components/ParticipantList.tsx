@@ -11,7 +11,7 @@ interface Props {
 const ROLE_BADGE: Record<Role, string> = {
   host: '👑 Host',
   moderator: '🛡 Mod',
-  participant: '👤 Participant',
+  participant: '👤 Viewer',
 };
 
 const ROLE_OPTIONS: Role[] = ['moderator', 'participant'];
@@ -22,9 +22,14 @@ export default function ParticipantList({ participants, myId, myRole, onAssignRo
   return (
     <div className="participant-list">
       <h3>Participants ({participants.length})</h3>
-      <ul>
+      <ul className="participant-ul">
         {participants.map((p) => (
-          <li key={p.id} className={`participant-item ${p.id === myId ? 'me' : ''}`}>
+          <li key={p.id} className={`participant-item ${p.id === myId ? 'me' : ''} slide-up`}>
+            <img 
+              src={`https://api.dicebear.com/7.x/notionists/svg?seed=${p.username}&backgroundColor=transparent`} 
+              alt="avatar" 
+              className="avatar" 
+            />
             <div className="participant-info">
               <span className="participant-name">
                 {p.username}{p.id === myId ? ' (you)' : ''}
@@ -32,7 +37,6 @@ export default function ParticipantList({ participants, myId, myRole, onAssignRo
               <span className={`role-badge role-${p.role}`}>{ROLE_BADGE[p.role]}</span>
             </div>
 
-            {/* Host controls for other participants */}
             {isHost && p.id !== myId && (
               <div className="participant-actions">
                 <select
@@ -55,7 +59,7 @@ export default function ParticipantList({ participants, myId, myRole, onAssignRo
                 <button
                   className="btn-remove"
                   onClick={() => onRemove(p.id)}
-                  title="Remove from room"
+                  title="Remove"
                 >
                   ✕
                 </button>

@@ -17,7 +17,6 @@ export default function Chat({ messages, onSend, myId }: Props) {
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -34,25 +33,40 @@ export default function Chat({ messages, onSend, myId }: Props) {
       <h3>💬 Chat</h3>
       <div className="chat-messages">
         {messages.length === 0 && (
-          <p className="chat-empty">No messages yet. Say hi! 👋</p>
-        )}
-        {messages.map((m, i) => (
-          <div key={i} className={`chat-msg ${m.userId === myId ? 'chat-msg-me' : ''}`}>
-            <span className="chat-author">
-              {ROLE_TAG[m.role]} {m.username}
-            </span>
-            <span className="chat-text">{m.message}</span>
-            <span className="chat-time">
-              {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </span>
+          <div className="chat-empty">
+            <span className="wave">👋</span>
+            <p>No messages yet.<br/>Say hi!</p>
           </div>
-        ))}
+        )}
+        {messages.map((m, i) => {
+          const isMe = m.userId === myId;
+          return (
+            <div key={i} className={`chat-row ${isMe ? 'chat-row-me' : ''} slide-up`}>
+              {!isMe && (
+                <img 
+                  src={`https://api.dicebear.com/7.x/notionists/svg?seed=${m.username}&backgroundColor=transparent`} 
+                  alt="avatar" 
+                  className="chat-avatar" 
+                />
+              )}
+              <div className={`chat-bubble ${isMe ? 'chat-bubble-me' : ''}`}>
+                <div className="chat-header">
+                  <span className="chat-author">{ROLE_TAG[m.role]} {m.username}</span>
+                  <span className="chat-time">
+                    {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <div className="chat-text">{m.message}</div>
+              </div>
+            </div>
+          );
+        })}
         <div ref={bottomRef} />
       </div>
       <div className="chat-input-row">
         <input
           type="text"
-          placeholder="Type a message…"
+          placeholder="Type a message..."
           value={input}
           maxLength={500}
           onChange={(e) => setInput(e.target.value)}

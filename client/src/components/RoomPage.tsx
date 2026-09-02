@@ -16,6 +16,11 @@ export default function RoomPage() {
   const [myRole, setMyRole] = useState<Role>('participant');
   const [connected, setConnected] = useState(false);
   const [kicked, setKicked] = useState(false);
+  const [isWakingServer, setIsWakingServer] = useState(false);
+
+  // ── Name Prompt for Direct Links ─────────────
+  const [needsName, setNeedsName] = useState(!sessionStorage.getItem('username'));
+  const [tempName, setTempName] = useState('');
 
   // ── Room state ───────────────────────────────
   const [participants, setParticipants] = useState<ParticipantInfo[]>([]);
@@ -24,45 +29,44 @@ export default function RoomPage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [notification, setNotification] = useState('');
 
-  // Ref to track current videoId without causing re-renders
   const videoIdRef = useRef('');
-
   const canControl = myRole === 'host' || myRole === 'moderator';
 
-  // ── Show a temporary notification banner ─────
   const notify = useCallback((msg: string) => {
     setNotification(msg);
-    setTimeout(() => setNotification(''), 3500);
+    setTimeout(() => setNotification(''), 4000);
   }, []);
 
-  // ── Connect and join room ────────────────────
-  useEffect(() => {
-    const username = sessionStorage.getItem('username');
-    if (!username || !roomId) {
-      navigate('/');
-      return;
-    }
+  const handleJoinSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!tempName.trim()) return;
+    sessionStorage.setItem('username', tempName.trim());
+    setNeedsName(false);
+  };
 
-    // Connect socket if not already connected
+  useEffect(() => {
+    if (needsName || !roomId) return;
+    
+    const username = sessionStorage.getItem('username');
+    if (!username) return;
+
+    // Detect if server is asleep (takes > 3s to connect)
+    const wakeTimer = setTimeout(() => {
+      if (!socket.connected) setIsWakingServer(true);
+    }, 3000);
+
     if (!socket.connected) socket.connect();
 
-    // ── Socket event handlers ──────────────────
-
     socket.on('connect', () => {
+      clearTimeout(wakeTimer);
+      setIsWakingServer(false);
       setConnected(true);
       socket.emit('join_room', { roomId, username });
     });
 
     socket.on('disconnect', () => setConnected(false));
 
-    // Server confirmed we joined
-    socket.on('joined', (data: {
-      userId: string;
-      role: Role;
-      roomId: string;
-      videoState: VideoState;
-      participants: ParticipantInfo[];
-    }) => {
+    socket.on('joined', (data: any) => {
       setMyId(data.userId);
       setMyRole(data.role);
       setParticipants(data.participants);
@@ -73,18 +77,17 @@ export default function RoomPage() {
       setVideoState(data.videoState);
     });
 
-    socket.on('user_joined', (data: { username: string; role: Role; participants: ParticipantInfo[] }) => {
+    socket.on('user_joined', (data: any) => {
       setParticipants(data.participants);
-      notify(`${data.username} joined as ${data.role}.`);
+      notify(`👋 ${data.username} joined the party!`);
     });
 
-    socket.on('user_left', (data: { username: string; participants: ParticipantInfo[] }) => {
+    socket.on('user_left', (data: any) => {
       setParticipants(data.participants);
-      notify(`${data.username} left the room.`);
+      notify(`🏃 ${data.username} left.`);
     });
 
     socket.on('sync_state', (state: VideoState) => {
-      // Update videoId only if it changed
       if (state.videoId && state.videoId !== videoIdRef.current) {
         videoIdRef.current = state.videoId;
         setVideoId(state.videoId);
@@ -92,17 +95,21 @@ export default function RoomPage() {
       setVideoState({ ...state });
     });
 
-    socket.on('role_assigned', (data: { userId: string; username: string; role: Role; participants: ParticipantInfo[] }) => {
+    socket.on('role_assigned', (data: any) => {
       setParticipants(data.participants);
-      // Update our own role if we were assigned
       setMyId((id) => {
-        if (id === data.userId) setMyRole(data.role);
+        if (id === data.userId) {
+          setMyRole(data.role);
+          notify(`🎉 You are now a ${data.role}!`);
+        }
         return id;
       });
-      notify(`${data.username} is now ${data.role}.`);
+      if (data.userId !== myId) {
+        notify(`✨ ${data.username} is now a ${data.role}.`);
+      }
     });
 
-    socket.on('participant_removed', (data: { userId: string; participants: ParticipantInfo[] }) => {
+    socket.on('participant_removed', (data: any) => {
       setParticipants(data.participants);
     });
 
@@ -116,16 +123,17 @@ export default function RoomPage() {
     });
 
     socket.on('error', (data: { message: string }) => {
-      notify(`⚠ ${data.message}`);
+      notify(`⚠️ ${data.message}`);
     });
 
-    // If socket already connected (hot-reload), emit join immediately
     if (socket.connected) {
+      clearTimeout(wakeTimer);
       setConnected(true);
       socket.emit('join_room', { roomId, username });
     }
 
     return () => {
+      clearTimeout(wakeTimer);
       socket.emit('leave_room', { roomId });
       socket.off('connect');
       socket.off('disconnect');
@@ -139,73 +147,70 @@ export default function RoomPage() {
       socket.off('chat_message');
       socket.off('error');
     };
-  }, [roomId, navigate, notify]);
+  }, [roomId, needsName, notify, myId]);
 
-  // ── Playback event emitters ──────────────────
+  const handlePlay = useCallback(() => socket.emit('play', { roomId }), [roomId]);
+  const handlePause = useCallback(() => socket.emit('pause', { roomId, currentTime: videoState?.currentTime ?? 0 }), [roomId, videoState]);
+  const handleSeek = useCallback((time: number) => socket.emit('seek', { roomId, time }), [roomId]);
+  const handleChangeVideo = useCallback((id: string) => socket.emit('change_video', { roomId, videoId: id }), [roomId]);
+  const handleAssignRole = useCallback((userId: string, role: Role) => socket.emit('assign_role', { roomId, userId, role }), [roomId]);
+  const handleRemove = useCallback((userId: string) => socket.emit('remove_participant', { roomId, userId }), [roomId]);
+  const handleSendChat = useCallback((message: string) => socket.emit('chat_message', { roomId, message }), [roomId]);
 
-  const handlePlay = useCallback(() => {
-    socket.emit('play', { roomId });
-  }, [roomId]);
-
-  const handlePause = useCallback(() => {
-    socket.emit('pause', { roomId, currentTime: videoState?.currentTime ?? 0 });
-  }, [roomId, videoState]);
-
-  const handleSeek = useCallback((time: number) => {
-    socket.emit('seek', { roomId, time });
-  }, [roomId]);
-
-  const handleChangeVideo = useCallback((id: string) => {
-    socket.emit('change_video', { roomId, videoId: id });
-  }, [roomId]);
-
-  const handleAssignRole = useCallback((userId: string, role: Role) => {
-    socket.emit('assign_role', { roomId, userId, role });
-  }, [roomId]);
-
-  const handleRemove = useCallback((userId: string) => {
-    socket.emit('remove_participant', { roomId, userId });
-  }, [roomId]);
-
-  const handleSendChat = useCallback((message: string) => {
-    socket.emit('chat_message', { roomId, message });
-  }, [roomId]);
-
-  // ── Kicked screen ────────────────────────────
-  if (kicked) {
+  if (needsName) {
     return (
-      <div className="kicked-screen">
-        <h2>You were removed from the room.</h2>
-        <button className="btn-primary" onClick={() => navigate('/')}>Go Home</button>
+      <div className="name-prompt-screen fade-in">
+        <div className="card">
+          <h2>Join Watch Party 🍿</h2>
+          <p>You've been invited to room <strong>{roomId}</strong></p>
+          <form onSubmit={handleJoinSubmit} className="name-form">
+            <input
+              autoFocus
+              type="text"
+              placeholder="Enter your name..."
+              value={tempName}
+              onChange={(e) => setTempName(e.target.value)}
+            />
+            <button type="submit" className="btn-primary">Join Room</button>
+          </form>
+        </div>
       </div>
     );
   }
 
-  // ── Main UI ──────────────────────────────────
+  if (kicked) {
+    return (
+      <div className="kicked-screen fade-in">
+        <div className="card text-center">
+          <h2>🚪 You were removed</h2>
+          <p>The host has removed you from this room.</p>
+          <button className="btn-primary" onClick={() => navigate('/')}>Go Home</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="room-page">
-      {/* ── Header ── */}
+    <div className="room-page fade-in">
       <header className="room-header">
-        <h1>🎬 Watch Party</h1>
+        <div className="logo" onClick={() => navigate('/')}>🎬 Watch Party</div>
         <div className="header-right">
-          <span className={`conn-badge ${connected ? 'conn-online' : 'conn-offline'}`}>
-            {connected ? '● Live' : '○ Connecting…'}
-          </span>
-          <span className="my-role-badge">
-            {myRole === 'host' ? '👑' : myRole === 'moderator' ? '🛡' : '👤'} {myRole}
-          </span>
+          <div className={`status-pill ${connected ? 'online' : 'offline'}`}>
+            <div className="status-dot"></div>
+            {connected ? 'Live' : isWakingServer ? 'Waking Server...' : 'Connecting...'}
+          </div>
+          <div className="my-role-badge">
+            {myRole === 'host' ? '👑 Host' : myRole === 'moderator' ? '🛡 Mod' : '👤 Viewer'}
+          </div>
           <button className="btn-leave" onClick={() => { socket.emit('leave_room', { roomId }); navigate('/'); }}>
             Leave
           </button>
         </div>
       </header>
 
-      {/* ── Notification banner ── */}
-      {notification && <div className="notification-banner">{notification}</div>}
+      {notification && <div className="notification-toast">{notification}</div>}
 
-      {/* ── Main layout ── */}
       <div className="room-layout">
-        {/* Left column: player + controls */}
         <div className="room-main">
           <YoutubePlayer
             videoId={videoId}
@@ -225,7 +230,6 @@ export default function RoomPage() {
           />
         </div>
 
-        {/* Right sidebar: participants + chat */}
         <div className="room-sidebar">
           <ParticipantList
             participants={participants}

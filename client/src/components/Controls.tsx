@@ -14,6 +14,8 @@ export default function Controls({ canControl, roomId, onPlay, onPause, onSeek, 
   const [videoUrl, setVideoUrl] = useState('');
   const [seekTime, setSeekTime] = useState('');
   const [videoError, setVideoError] = useState('');
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const handleChangeVideo = () => {
     const id = extractVideoId(videoUrl.trim());
@@ -35,32 +37,41 @@ export default function Controls({ canControl, roomId, onPlay, onPause, onSeek, 
 
   const roomLink = `${window.location.origin}/room/${roomId}`;
 
+  const copyCode = () => {
+    navigator.clipboard.writeText(roomId);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
+
   const copyLink = () => {
     navigator.clipboard.writeText(roomLink);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
   };
 
   return (
     <div className="controls-panel">
-      {/* ── Room link ── */}
-      <div className="control-section">
+      <div className="control-section invite-section">
         <label>Room Code</label>
         <div className="room-link-row">
-          <input readOnly value={roomId} className="room-code-input" />
-          <button className="btn-copy" onClick={copyLink} title="Copy invite link">
-            📋 Copy Link
+          <div className="code-display">{roomId}</div>
+          <button className="btn-secondary" onClick={copyCode}>
+            {copiedCode ? '✓ Copied' : '📄 Copy Code'}
+          </button>
+          <button className="btn-secondary" onClick={copyLink}>
+            {copiedLink ? '✓ Copied' : '🔗 Copy Link'}
           </button>
         </div>
       </div>
 
-      {/* ── Video controls (Host / Moderator only) ── */}
       {canControl ? (
-        <>
+        <div className="host-controls">
           <div className="control-section">
             <label>Change Video</label>
             <div className="input-row">
               <input
                 type="text"
-                placeholder="Paste YouTube URL or video ID"
+                placeholder="Paste YouTube URL..."
                 value={videoUrl}
                 onChange={(e) => { setVideoUrl(e.target.value); setVideoError(''); }}
                 onKeyDown={(e) => e.key === 'Enter' && handleChangeVideo()}
@@ -70,18 +81,16 @@ export default function Controls({ canControl, roomId, onPlay, onPause, onSeek, 
             {videoError && <span className="error">{videoError}</span>}
           </div>
 
-          <div className="control-section playback-btns">
-            <button className="btn-play" onClick={onPlay}>▶ Play</button>
-            <button className="btn-pause" onClick={onPause}>⏸ Pause</button>
-          </div>
-
-          <div className="control-section">
-            <label>Seek to (seconds)</label>
-            <div className="input-row">
+          <div className="control-section playback-section">
+            <div className="playback-btns">
+              <button className="btn-play" onClick={onPlay}>▶ Play</button>
+              <button className="btn-pause" onClick={onPause}>⏸ Pause</button>
+            </div>
+            <div className="seek-row">
               <input
                 type="number"
                 min={0}
-                placeholder="e.g. 90"
+                placeholder="Seek to (s)..."
                 value={seekTime}
                 onChange={(e) => setSeekTime(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSeek()}
@@ -89,7 +98,7 @@ export default function Controls({ canControl, roomId, onPlay, onPause, onSeek, 
               <button className="btn-secondary" onClick={handleSeek}>Go</button>
             </div>
           </div>
-        </>
+        </div>
       ) : (
         <div className="control-section participant-notice">
           <p>👁 You are a <strong>Participant</strong> — playback is controlled by the host.</p>
