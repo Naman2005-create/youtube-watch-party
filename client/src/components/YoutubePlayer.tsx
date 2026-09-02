@@ -1,7 +1,6 @@
-import { useEffect, useRef, useCallback } from 'react';
+﻿import { useEffect, useRef, useCallback } from 'react';
+import YouTube, { YouTubeEvent, YouTubePlayer } from 'react-youtube';
 import { VideoState } from '../types';
-
-
 
 interface Props {
   videoId: string;
@@ -20,91 +19,13 @@ export default function YoutubePlayer({
   onPause,
   onSeek,
 }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const playerRef = useRef<YT.Player | null>(null);
-  const isSyncingRef = useRef(false);   // prevent echo-back when applying sync
-  const lastVideoId = useRef<string>('');
-  const seekDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playerRef = useRef<YouTubePlayer | null>(null);
+  const isSyncingRef = useRef(false);
 
-  // ── Create / recreate the player ────────────
-  const createPlayer = useCallback(() => {
-    if (!containerRef.current) return;
-
-    // Destroy old player if it exists
-    if (playerRef.current) {
-      try { playerRef.current.destroy(); } catch { /* ignore */ }
-      playerRef.current = null;
-    }
-
-    // Create a fresh div for the iframe
-    const div = document.createElement('div');
-    div.id = 'yt-player-inner';
-    containerRef.current.innerHTML = '';
-    containerRef.current.appendChild(div);
-
-    playerRef.current = new window.YT.Player('yt-player-inner', {
-      videoId: videoId || '',
-      playerVars: {
-        autoplay: 0,
-        controls: canControl ? 1 : 0,  // hide native controls for participants
-        modestbranding: 1,
-        rel: 0,
-        fs: 1,
-      },
-      events: {
-        onReady: (event) => {
-          // Mute initially to allow autoplay later
-          event.target.muted = true;
-          // If we already have a state, apply it
-          if (videoState) applySyncState(videoState);
-        },
-        onStateChange: (event) => {
-          if (isSyncingRef.current || !canControl) return;
-
-          if (event.data === window.YT.PlayerState.PLAYING) {
-            onPlay();
-          } else if (event.data === window.YT.PlayerState.PAUSED) {
-            const time = playerRef.current?.getCurrentTime() ?? 0;
-            onPause(time);
-          }
-        },
-      },
-    });
-    lastVideoId.current = videoId;
-  }, [videoId, canControl]); // eslint-disable-line
-
-  // ── Initialize when API is ready ─────────────
-  useEffect(() => {
-    const init = () => createPlayer();
-
-    if (window.YT && window.YT.Player) {
-      init();
-    } else {
-      window.onYouTubeIframeAPIReady = init;
-    }
-
-    return () => {
-      if (playerRef.current) {
-        try { playerRef.current.destroy(); } catch { /* ignore */ }
-      }
-    };
-  }, []); // eslint-disable-line
-
-  // ── Handle videoId changes ───────────────────
-  useEffect(() => {
-    if (!playerRef.current || !videoId) return;
-    if (videoId === lastVideoId.current) return;
-    lastVideoId.current = videoId;
-    isSyncingRef.current = true;
-    playerRef.current.loadVideoById(videoId, 0);
-    playerRef.current.pauseVideo();
-    setTimeout(() => { isSyncingRef.current = false; }, 1000);
-  }, [videoId]);
-
-  // ── Apply incoming sync_state ────────────────
+  // Apply incoming sync_state
   const applySyncState = useCallback((state: VideoState) => {
     const player = playerRef.current;
-    if (!player || typeof player.seekTo !== 'function') return;
+    if (!player) return;
 
     isSyncingRef.current = true;
 
@@ -129,23 +50,52 @@ export default function YoutubePlayer({
     setTimeout(() => { isSyncingRef.current = false; }, 800);
   }, []);
 
-  // ── Listen for videoState changes from server ─
+  // Listen for videoState changes from server
   useEffect(() => {
     if (!videoState) return;
     applySyncState(videoState);
   }, [videoState, applySyncState]);
 
-  // ── Seek via native controls (canControl only) ─
-  // We hook into the interval loop to detect manual seeks
+  // Hook into the interval loop to detect manual seeks (only for controllers)
   useEffect(() => {
     if (!canControl) return;
     const interval = setInterval(() => {
       const player = playerRef.current;
       if (!player || isSyncingRef.current) return;
-      if (player.getPlayerState() !== window.YT?.PlayerState?.PLAYING) return;
+      // You can add additional sync logic here if needed
     }, 1000);
     return () => clearInterval(interval);
   }, [canControl]);
+
+  const handleReady = (event: YouTubeEvent) => {
+    playerRef.current = event.target;
+    // Mute initially if needed for autoplay, or just let it play
+    if (videoState) {
+      applySyncState(videoState);
+    }
+  };
+
+  const handleStateChange = (event: YouTubeEvent) => {
+    if (isSyncingRef.current || !canControl) return;
+
+    if (event.data === YouTube.PlayerState.PLAYING) {
+      onPlay();
+    } else if (event.data === YouTube.PlayerState.PAUSED) {
+      const time = event.target.getCurrentTime() ?? 0;
+      onPause(time);
+    }
+  };
+
+  const opts = {
+    height: '100%',
+    width: '100%',
+    playerVars: {
+      autoplay: 1,
+      controls: canControl ? 1 : 0,
+      modestbranding: 1,
+      rel: 0,
+    },
+  };
 
   return (
     <div className="yt-player-wrapper">
@@ -153,11 +103,21 @@ export default function YoutubePlayer({
         <div className="yt-placeholder">
           <span>🎬</span>
           <p>No video loaded yet.<br />
-            {canControl ? 'Paste a YouTube URL above to start.' : 'Waiting for the host to load a video.'}
+            {canControl ? 'Paste a YouTube URL below to start.' : 'Waiting for the host to load a video.'}
           </p>
         </div>
       )}
-      <div ref={containerRef} className="yt-container" style={{ display: videoId ? 'block' : 'none' }} />
+      <div className="yt-container" style={{ opacity: videoId ? 1 : 0, pointerEvents: videoId ? 'auto' : 'none' }}>
+        {videoId && (
+          <YouTube
+            videoId={videoId}
+            opts={opts}
+            onReady={handleReady}
+            onStateChange={handleStateChange}
+            className="yt-iframe-container"
+          />
+        )}
+      </div>
     </div>
   );
 }

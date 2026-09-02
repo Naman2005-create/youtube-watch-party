@@ -147,7 +147,7 @@ export default function RoomPage() {
       socket.off('chat_message');
       socket.off('error');
     };
-  }, [roomId, needsName, notify, myId]);
+  }, [roomId, needsName, notify]); // REMOVED myId to fix infinite connect/disconnect loop
 
   const handlePlay = useCallback(() => socket.emit('play', { roomId }), [roomId]);
   const handlePause = useCallback(() => socket.emit('pause', { roomId, currentTime: videoState?.currentTime ?? 0 }), [roomId, videoState]);
