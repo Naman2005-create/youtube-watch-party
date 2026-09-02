@@ -4,7 +4,7 @@ A real-time YouTube Watch Party web application where multiple users can watch Y
 
 ## 🔴 Live Demo
 
-> **Deployed URL**: *(Add your Render URL here after deployment)*
+> **Deployed URL**: https://watch-party-client-s2p1.onrender.com
 
 ---
 
